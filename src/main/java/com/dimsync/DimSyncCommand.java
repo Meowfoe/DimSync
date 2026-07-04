@@ -88,6 +88,8 @@ public final class DimSyncCommand {
 				? "[DimSync] Solo mode on - you won't be pulled along when others change dimension."
 				: "[DimSync] Solo mode off - you'll sync with the group again."),
 				false);
+
+		DimSyncMod.savePlayerState(ctx.getSource().getServer());
 		return 1;
 	}
 }

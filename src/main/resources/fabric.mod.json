@@ -5,10 +5,10 @@
   "name": "DimSync",
   "description": "Keeps the whole group together: when any online player changes dimension (including modded ones), everyone else is pulled to that exact spot. Auto-discovers and remembers every dimension it has ever seen, assigning each a stable numeric ID.",
   "authors": [
-    "you"
+    "@whitepine.mdl on discord"
   ],
   "contact": {},
-  "license": "CC0-1.0",
+  "license": "MIT",
   "icon": "assets/dimsync/icon.png",
   "environment": "*",
   "entrypoints": {
