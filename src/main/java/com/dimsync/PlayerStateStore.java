@@ -17,11 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Persists per-player DimSync state - solo mode opt-outs and each player's
- * last known Overworld position - to a JSON file in the world save folder,
- * so both survive server restarts.
- */
 public final class PlayerStateStore {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -29,7 +24,6 @@ public final class PlayerStateStore {
 
 	private Path filePath;
 
-	/** Call once at server startup to populate the live collections from disk. */
 	public void load(MinecraftServer server, Set<UUID> soloPlayers, Map<UUID, DimSyncMod.OverworldPosition> overworldPositions) {
 		filePath = server.getSavePath(WorldSavePath.ROOT).resolve(FILE_NAME);
 		soloPlayers.clear();
@@ -50,7 +44,6 @@ public final class PlayerStateStore {
 					try {
 						soloPlayers.add(UUID.fromString(id));
 					} catch (IllegalArgumentException ignored) {
-						// Skip malformed entries rather than failing the whole load.
 					}
 				}
 			}
@@ -61,7 +54,6 @@ public final class PlayerStateStore {
 						overworldPositions.put(UUID.fromString(id),
 								new DimSyncMod.OverworldPosition(pos.x, pos.y, pos.z, pos.yaw, pos.pitch));
 					} catch (IllegalArgumentException ignored) {
-						// Skip malformed entries rather than failing the whole load.
 					}
 				});
 			}
@@ -70,7 +62,6 @@ public final class PlayerStateStore {
 		}
 	}
 
-	/** Writes the current state of both collections out to disk. */
 	public void save(Set<UUID> soloPlayers, Map<UUID, DimSyncMod.OverworldPosition> overworldPositions) {
 		if (filePath == null) {
 			return;

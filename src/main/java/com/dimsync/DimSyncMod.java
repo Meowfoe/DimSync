@@ -28,41 +28,16 @@ public class DimSyncMod implements ModInitializer {
 	public static final DimensionRegistry REGISTRY = new DimensionRegistry();
 	private static final PlayerStateStore PLAYER_STORE = new PlayerStateStore();
 
-	/** Master on/off switch, toggled with /dimsync toggle. */
 	public static volatile boolean enabled = true;
 
-	/**
-	 * Players who've opted out of being dragged along with the group via
-	 * /dimsync solo. A solo player is never pulled by anyone else's
-	 * movement, AND their own movement never drags anyone else along either -
-	 * they move around independently while solo mode is on. Persisted to
-	 * disk so it survives restarts.
-	 */
 	public static final Set<UUID> soloPlayers = ConcurrentHashMap.newKeySet();
 
-	/**
-	 * Each player's last known Overworld position. Updated continuously every
-	 * tick for anyone currently standing in the Overworld, so it always holds
-	 * an up-to-date (within one tick) position right up until the moment they
-	 * leave. When the group later syncs back into the Overworld, each player
-	 * (including whoever triggered the return) is restored to their own spot
-	 * here instead of being matched to wherever the trigger player landed.
-	 * Persisted to disk so it survives restarts.
-	 */
 	private static final Map<UUID, OverworldPosition> overworldPositions = new ConcurrentHashMap<>();
 
-	/**
-	 * Re-entrancy guard: while we're teleporting the rest of the group to
-	 * follow the player who moved, those teleports would themselves fire
-	 * MORE "player changed world" events. This flag tells our own listener
-	 * to ignore events caused by DimSync itself, so it doesn't chain into an
-	 * infinite loop of mutual teleporting.
-	 */
 	private static final AtomicBoolean syncing = new AtomicBoolean(false);
 
-	/** Counts ticks since the last autosave of player state, see onServerTick. */
 	private int ticksSinceAutosave = 0;
-	private static final int AUTOSAVE_INTERVAL_TICKS = 20 * 60; // ~1 minute
+	private static final int AUTOSAVE_INTERVAL_TICKS = 20 * 60;
 
 	@Override
 	public void onInitialize() {
@@ -82,8 +57,6 @@ public class DimSyncMod implements ModInitializer {
 		REGISTRY.load(server);
 		LOGGER.info("[DimSync] Loaded {} previously discovered dimension(s) from disk.", REGISTRY.getAll().size());
 
-		// Eagerly register every dimension that's already loaded (vanilla + all
-		// mods' dimensions) rather than waiting for a player to visit each one.
 		REGISTRY.discoverAll(server);
 		LOGGER.info("[DimSync] {} dimension(s) known in total after startup scan.", REGISTRY.getAll().size());
 
@@ -97,8 +70,6 @@ public class DimSyncMod implements ModInitializer {
 	}
 
 	private void onServerTick(MinecraftServer server) {
-		// Continuously remember where everyone is in the Overworld, so we
-		// always have an up-to-date spot to send them back to later.
 		for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
 			if (player.getWorld().getRegistryKey().equals(World.OVERWORLD)) {
 				overworldPositions.put(player.getUuid(), OverworldPosition.of(player));
@@ -112,7 +83,6 @@ public class DimSyncMod implements ModInitializer {
 		}
 	}
 
-	/** Exposed so DimSyncCommand can force an immediate save after /dimsync solo. */
 	public static void savePlayerState(MinecraftServer server) {
 		PLAYER_STORE.save(soloPlayers, overworldPositions);
 	}
@@ -122,7 +92,6 @@ public class DimSyncMod implements ModInitializer {
 			return;
 		}
 		if (syncing.get()) {
-			// This event was caused by our own sync teleport below - ignore it.
 			return;
 		}
 
@@ -149,8 +118,6 @@ public class DimSyncMod implements ModInitializer {
 				false);
 
 		if (soloPlayers.contains(player.getUuid())) {
-			// This player is in solo mode - they move on their own and don't
-			// drag anyone else along with them.
 			return;
 		}
 
@@ -168,13 +135,11 @@ public class DimSyncMod implements ModInitializer {
 					continue;
 				}
 				if (soloPlayers.contains(other.getUuid())) {
-					// This player opted out of being dragged along - leave them be.
 					continue;
 				}
 
 				if (destinationIsOverworld) {
 					if (other.getWorld().getRegistryKey().equals(World.OVERWORLD)) {
-						// Already home - nothing to do for this player.
 						continue;
 					}
 					teleportToOwnSpotOrFallback(other, destination, x, y, z, yaw, pitch);
@@ -183,9 +148,6 @@ public class DimSyncMod implements ModInitializer {
 				}
 			}
 
-			// The player who triggered the move should also land on their own
-			// remembered Overworld spot, instead of wherever the vanilla
-			// portal/command happened to place them.
 			if (destinationIsOverworld) {
 				teleportToOwnSpotOrFallback(player, destination, x, y, z, yaw, pitch);
 			}
@@ -194,9 +156,7 @@ public class DimSyncMod implements ModInitializer {
 		}
 	}
 
-	/** How long the post-teleport Resistance buff lasts. */
 	private static final int RESISTANCE_DURATION_TICKS = 15 * 20;
-	/** Amplifier 9 = Resistance X (levels are amplifier + 1). */
 	private static final int RESISTANCE_AMPLIFIER = 9;
 
 	private void teleportToOwnSpotOrFallback(ServerPlayerEntity target, ServerWorld destination,
@@ -209,11 +169,6 @@ public class DimSyncMod implements ModInitializer {
 		}
 	}
 
-	/**
-	 * Teleports a player and grants a brief Resistance X buff afterward, so
-	 * landing somewhere unexpected (mid-air, in lava, etc.) doesn't get anyone
-	 * killed by fall damage or similar right after a forced sync teleport.
-	 */
 	private void teleportAndProtect(ServerPlayerEntity target, ServerWorld world,
 			double x, double y, double z, float yaw, float pitch) {
 		target.teleport(world, x, y, z, yaw, pitch);
@@ -221,11 +176,6 @@ public class DimSyncMod implements ModInitializer {
 				StatusEffects.RESISTANCE, RESISTANCE_DURATION_TICKS, RESISTANCE_AMPLIFIER, false, false, true));
 	}
 
-	/**
-	 * Turns a raw dimension identifier like "dreamshift:familiar_eye_exam"
-	 * into a friendly pair: namespace "Dreamshift", path "Familiar Eye Exam".
-	 * Underscores become spaces and every word is capitalized.
-	 */
 	private static PrettyName prettifyDimensionId(String dimensionId) {
 		String[] parts = dimensionId.split(":", 2);
 		String namespace = parts.length > 0 ? parts[0] : dimensionId;
@@ -254,7 +204,6 @@ public class DimSyncMod implements ModInitializer {
 	private record PrettyName(String namespace, String path) {
 	}
 
-	/** A remembered position + facing direction in the Overworld. */
 	public record OverworldPosition(double x, double y, double z, float yaw, float pitch) {
 		static OverworldPosition of(ServerPlayerEntity player) {
 			return new OverworldPosition(player.getX(), player.getY(), player.getZ(), player.getYaw(), player.getPitch());
