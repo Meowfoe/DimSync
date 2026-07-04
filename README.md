@@ -18,6 +18,7 @@ I made this mod specifically because of horror mods like untitled.log which tele
 - `/dimsync toggle` - turn it on/off (op only)
 - `/dimsync status` - check if it's on, and how many dimensions it knows about
 - `/dimsync list` - see every dimension it's found so far
+- `/dimsync solo` - toggle for yourself only: stops you from being pulled along when someone else changes dimension (you can still trigger syncs for everyone else)
 
 ## Requires
 
@@ -33,6 +34,8 @@ Drop the built jar into your `mods` folder along with Fabric API. No config need
 
 - Everyone lands on the same exact block as whoever moved, it doesn't try to spread people out
 - If you're offline when the group moves, you just stay where you logged out
+- If you're in the Overworld and get pulled into another dimension, your Overworld spot is remembered - when the group comes back, you're put back where you actually were instead of wherever the returning player landed. This still works if you go through several dimensions before coming back.
+- Solo mode and remembered Overworld spots reset if the server restarts (in-memory only right now)
 
 ## Project layout
 

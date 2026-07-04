@@ -7,9 +7,14 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
+import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DimSyncMod implements ModInitializer {
@@ -21,6 +26,23 @@ public class DimSyncMod implements ModInitializer {
 
 	/** Master on/off switch, toggled with /dimsync toggle. */
 	public static volatile boolean enabled = true;
+
+	/**
+	 * Players who've opted out of being dragged along with the group via
+	 * /dimsync solo. They can still trigger syncs for everyone else by moving
+	 * themselves - this only excludes them from being pulled by others.
+	 * In-memory only: resets on server restart.
+	 */
+	public static final Set<UUID> soloPlayers = ConcurrentHashMap.newKeySet();
+
+	/**
+	 * Last known Overworld position for each player, captured right before
+	 * they get pulled away from the Overworld into some other dimension.
+	 * When the group later syncs back into the Overworld, a player with an
+	 * entry here is restored to their own spot instead of being matched to
+	 * whoever triggered the return. In-memory only: resets on server restart.
+	 */
+	private static final Map<UUID, OverworldPosition> overworldReturnPositions = new ConcurrentHashMap<>();
 
 	/**
 	 * Re-entrancy guard: while we're teleporting the rest of the group to
@@ -91,16 +113,41 @@ public class DimSyncMod implements ModInitializer {
 			double z = player.getZ();
 			float yaw = player.getYaw();
 			float pitch = player.getPitch();
+			boolean destinationIsOverworld = destination.getRegistryKey().equals(World.OVERWORLD);
 
 			for (ServerPlayerEntity other : server.getPlayerManager().getPlayerList()) {
 				if (other == player) {
 					continue;
 				}
-				other.teleport(destination, x, y, z, yaw, pitch);
+				if (soloPlayers.contains(other.getUuid())) {
+					// This player opted out of being dragged along - leave them be.
+					continue;
+				}
+
+				if (destinationIsOverworld) {
+					OverworldPosition saved = overworldReturnPositions.get(other.getUuid());
+					if (saved != null) {
+						other.teleport(destination, saved.x(), saved.y(), saved.z(), saved.yaw(), saved.pitch());
+						continue;
+					}
+					// No saved spot for this player - fall back to matching the mover.
+					other.teleport(destination, x, y, z, yaw, pitch);
+				} else {
+					if (other.getWorld().getRegistryKey().equals(World.OVERWORLD)) {
+						// About to pull this player out of the Overworld - remember
+						// where they were so we can put them back later.
+						overworldReturnPositions.put(other.getUuid(), new OverworldPosition(
+								other.getX(), other.getY(), other.getZ(), other.getYaw(), other.getPitch()));
+					}
+					other.teleport(destination, x, y, z, yaw, pitch);
+				}
 			}
 		} finally {
 			syncing.set(false);
 		}
+	}
+
+	private record OverworldPosition(double x, double y, double z, float yaw, float pitch) {
 	}
 
 	/**

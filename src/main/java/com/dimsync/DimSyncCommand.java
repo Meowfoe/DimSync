@@ -1,12 +1,15 @@
 package com.dimsync;
 
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static net.minecraft.server.command.CommandManager.literal;
 
@@ -31,6 +34,8 @@ public final class DimSyncCommand {
 								.executes(DimSyncCommand::status))
 						.then(literal("list")
 								.executes(DimSyncCommand::list))
+						.then(literal("solo")
+								.executes(DimSyncCommand::toggleSolo))
 				));
 	}
 
@@ -63,6 +68,26 @@ public final class DimSyncCommand {
 		ctx.getSource().sendFeedback(() -> Text.literal("[DimSync] Discovered dimensions:"), false);
 		known.forEach((dimensionId, numericId) ->
 				ctx.getSource().sendFeedback(() -> Text.literal("  [" + numericId + "] " + dimensionId), false));
+		return 1;
+	}
+
+	private static int toggleSolo(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+		UUID id = player.getUuid();
+
+		boolean nowSolo;
+		if (DimSyncMod.soloPlayers.contains(id)) {
+			DimSyncMod.soloPlayers.remove(id);
+			nowSolo = false;
+		} else {
+			DimSyncMod.soloPlayers.add(id);
+			nowSolo = true;
+		}
+
+		ctx.getSource().sendFeedback(() -> Text.literal(nowSolo
+				? "[DimSync] Solo mode on - you won't be pulled along when others change dimension."
+				: "[DimSync] Solo mode off - you'll sync with the group again."),
+				false);
 		return 1;
 	}
 }
